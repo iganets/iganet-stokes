@@ -35,8 +35,19 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     GIT_TAG modularized
   )
   set(IGANET_BUILD_EXAMPLES  OFF CACHE BOOL "" FORCE)  
+
+  find_package(Torch REQUIRED)
+
+  # Fake 'torch' target to satisfy iganet::core's incorrect use
+  target_include_directories(torch INTERFACE ${TORCH_INCLUDE_DIRS})
+  target_link_libraries(torch INTERFACE ${TORCH_LIBRARIES})
+  target_compile_options(torch INTERFACE ${TORCH_CXX_FLAGS})
   FetchContent_MakeAvailable(iganet_core)
   FetchContent_GetProperties(iganet_core)
+  #set(IGANET_CORE_PATH "/Users/veronikatravnikova/repos/iganet/")  # Change this
+  #set(IGANET_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+
+  #add_subdirectory(${IGANET_CORE_PATH} iganet_core)
   
   ######################################################################
   # Set C++ standard
