@@ -108,13 +108,33 @@ public:
     Base::u_.from_tensor(outputs);
 
     auto vel = Base::u_.template clone<0, 1>();
-    auto p = Base::u_.template clone<0, 2>();
-        
-    auto vel_grad_x = vel.grad( std::get<0>(collPts_.first) ); //  g = grad( vel )[ cpt_u ] -> g_x component
-    std::cout << *vel_grad_x[0] << std::endl;
+    auto p = Base::u_.template clone<2>();
+
+    //std::cout << ", vel: " << vel << std::endl;
+    std::cout << ", p: " << p << std::endl;
     
-    auto vel_grad_y = vel.grad( std::get<1>(collPts_.first) ); //  g = grad( vel )[ cpt_v ] -> g_y component
-    //vel_grad_y[0];
+    // Compute first derivatives
+    auto vel_grad= vel.grad( std::get<2>(collPts_.first) ); // du/dx [ cpt_p ] 
+    std::cout << ", u_grad_x_mass: " << *vel_grad[0] << std::endl; //du/dx 
+    //std::cout << ", u_grad_x_mass: " << *u_grad_mass_cons[0] << std::endl; //du/dx 
+    //std::cout << ", u_grad_y: " << *u_grad[1] << std::endl; //du/dy ?
+    //std::cout << ", u_grad?: " << u_grad << std::endl; //du/dx ?
+
+    auto v_grad_mass_cons = vel.grad( std::get<2>(collPts_.first) ); // dv/dy [ cpt_p ] 
+    std::cout << ", v_grad_y_mass: " << *vel_grad[1] << std::endl; //du/dx 
+    //std::cout << ", v_grad_x: " << *vel_grad_y[0] << std::endl; //dv/dx ?
+    //std::cout << ", v_grad_y: " << *vel_grad_y[1] << std::endl; //dv/dy ?
+
+    auto p_grad_mom_x = p.grad( std::get<0>(collPts_.first) ); // dp [cpt_u]
+    //auto p_grad_mom_y = p.jac( std::get<1>(collPts_.first) ); // dp [cpt_v]
+    //std::cout << ", p_grad_mom_x: " << *p_grad_mom_x[0] << std::endl; //dp/dx
+    //std::cout << ", p_grad_mom_y: " << *p_grad_mom_y[1] << std::endl; //dp/dy
+
+    // Compute second derivatives
+    auto vel_hess = vel.hess( std::get<0>(collPts_.first) ); //  [cpt_u ] -> u_xx
+    //std::cout << "u_hess: " << vel_hess << std::endl; // u_xx
+
+  
     
     //    std::cout << vel << std::endl;
     exit(0);
@@ -159,24 +179,25 @@ int main() {
   using real_t = double;
 
   using geometry_t = iganet::S<iganet::UniformBSpline<real_t, 2, 1, 1>>;
-  using variable_t = iganet::TH<iganet::NonUniformBSpline<real_t, 1, 1, 1>,2>;
+  //using variable_t = iganet::TH<iganet::NonUniformBSpline<real_t, 1, 1, 1>,2>;
+  using variable_t = iganet::RT<iganet::UniformBSpline<real_t, 1, 2, 2>,2>;
 
   stokes<optimizer_t, geometry_t, variable_t>
       net( // Number of neurons per layers
-          {120, 120},
+          {20},
           // Activation functions
           {{iganet::activation::sigmoid},
-           {iganet::activation::sigmoid},
+          // {iganet::activation::sigmoid},
            {iganet::activation::none}},
           // Number of B-spline coefficients of the geometry, just [0,1] x [0,1]
           iganet::utils::to_array(2_i64, 2_i64),
           // Number of B-spline coefficients of the variable
-          iganet::utils::to_array(22_i64, 22_i64));
+          iganet::utils::to_array(10_i64, 10_i64));
 
     iganet::Log(iganet::log::info)
               << ", #parameters: " << net.nparameters() << std::endl;
   // Set maximum number of epochs
-  net.options().max_epoch(200);
+  net.options().max_epoch(1);
 
   // Set tolerance for the loss functions
   net.options().min_loss(1e-8);
@@ -185,7 +206,7 @@ int main() {
   auto t1 = std::chrono::high_resolution_clock::now();
 
   // Train network
-  //net.train();
+  net.train();
 
   // Stop time measurement
   auto t2 = std::chrono::high_resolution_clock::now();
