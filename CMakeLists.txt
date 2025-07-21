@@ -16,13 +16,13 @@ cmake_minimum_required (VERSION 3.24)
 
 ########################################################################
 #
-# Project: IgANet-TEMPLATE
+# Project: IgANet-Stokes
 #
 ########################################################################
-project(IgANet-TEMPLATE)
+project(IgANet-Stokes)
 
-add_library(iganet_TEMPLATE INTERFACE)
-add_library(iganet::TEMPLATE ALIAS iganet_TEMPLATE)
+add_library(iganet_stokes INTERFACE)
+add_library(iganet::stokes ALIAS iganet_stokes)
 
 ########################################################################
 # IgANets (core)
@@ -53,7 +53,7 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
   set(CMAKE_CXX_EXTENSIONS OFF)
 endif()
 
-target_include_directories(iganet_TEMPLATE INTERFACE ${PROJECT_SOURCE_DIR}/src ${PROJECT_BINARY_DIR}/src)
+target_include_directories(iganet_stokes INTERFACE ${PROJECT_SOURCE_DIR}/src ${PROJECT_BINARY_DIR}/src)
 
 ########################################################################
 # Collect sources
