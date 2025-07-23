@@ -108,31 +108,41 @@ public:
     Base::u_.from_tensor(outputs);
 
     auto vel = Base::u_.template clone<0, 1>();
-    auto p = Base::u_.template clone<2>();
+    auto p_y = Base::u_.template clone<0,2>();
+    auto p_x = Base::u_.template clone<2,0>();
 
     //std::cout << ", vel: " << vel << std::endl;
-    std::cout << ", p: " << p << std::endl;
+    //std::cout << ", p: " << p << std::endl;
     
     // Compute first derivatives
     auto vel_grad= vel.grad( std::get<2>(collPts_.first) ); // du/dx [ cpt_p ] 
-    std::cout << ", u_grad_x_mass: " << *vel_grad[0] << std::endl; //du/dx 
-    //std::cout << ", u_grad_x_mass: " << *u_grad_mass_cons[0] << std::endl; //du/dx 
-    //std::cout << ", u_grad_y: " << *u_grad[1] << std::endl; //du/dy ?
-    //std::cout << ", u_grad?: " << u_grad << std::endl; //du/dx ?
-
-    auto v_grad_mass_cons = vel.grad( std::get<2>(collPts_.first) ); // dv/dy [ cpt_p ] 
-    std::cout << ", v_grad_y_mass: " << *vel_grad[1] << std::endl; //du/dx 
-    //std::cout << ", v_grad_x: " << *vel_grad_y[0] << std::endl; //dv/dx ?
-    //std::cout << ", v_grad_y: " << *vel_grad_y[1] << std::endl; //dv/dy ?
-
-    auto p_grad_mom_x = p.grad( std::get<0>(collPts_.first) ); // dp [cpt_u]
-    //auto p_grad_mom_y = p.jac( std::get<1>(collPts_.first) ); // dp [cpt_v]
-    //std::cout << ", p_grad_mom_x: " << *p_grad_mom_x[0] << std::endl; //dp/dx
-    //std::cout << ", p_grad_mom_y: " << *p_grad_mom_y[1] << std::endl; //dp/dy
+    //std::cout << ", u_grad_x_mass: " << *vel_grad[0] << std::endl; //du/dx 
+    
+    auto p_grad_mom_x = p_x.grad( std::get<0>(collPts_.first) )[0]; // dp [cpt_u]
+    auto p_grad_mom_y = p_y.grad(std::get<1>(collPts_.first) )[1]; //dp [cpt_v]
+    //std::cout << ", p_grad_mom_x: " << *p_grad_mom_x << std::endl; //dp/dx
+    //std::cout << ", p_grad_mom_y: " << *p_grad_mom_y << std::endl; //dp/dy
 
     // Compute second derivatives
-    auto vel_hess = vel.hess( std::get<0>(collPts_.first) ); //  [cpt_u ] -> u_xx
-    //std::cout << "u_hess: " << vel_hess << std::endl; // u_xx
+    auto vel_hess_mom_x = vel.hess( std::get<0>(collPts_.first) ); //  [cpt_u ] 
+    std::cout << "d2u_dxx: " << *vel_hess_mom_x[0] << std::endl; // u_xx
+    std::cout << "d2u_dyy: " << *vel_hess_mom_x[3] << std::endl; // u_yy
+    auto vel_hess_mom_y = vel.hess(std::get<1>(collPts_.first) ); //  [cpt_v]
+    std::cout << "d2v_dxx: " << *vel_hess_mom_y[4] << std::endl; // v_xx
+    std::cout << "d2v_dyy: " << *vel_hess_mom_y[7] << std::endl; // v_yy
+
+    // loss
+    auto res_mom_x = *p_grad_mom_x - (*vel_hess_mom_x[0]+*vel_hess_mom_x[3]);
+    auto res_mom_y = *p_grad_mom_y - (*vel_hess_mom_y[4]+*vel_hess_mom_y[7]);
+    auto res_cont = *vel_grad[0] + * vel_grad[1];
+
+    std::cout << "res_mom_x: " << res_mom_x << std::endl; 
+    std::cout << "res_mom_y: " << res_mom_y << std::endl; 
+    std::cout << "res_cont: " << res_cont << std::endl; // u_xx
+
+
+
+    // body force
 
   
     
