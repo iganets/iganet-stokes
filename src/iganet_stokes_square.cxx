@@ -23,14 +23,12 @@ using namespace iganet::literals;
 
 /// @brief Specialization of the abstract IgANet class for Stokes's equation
 template <typename Optimizer, typename GeometryMap, typename Variable>
-class stokes : public iganet::IgANet<Optimizer, GeometryMap, Variable,
-                                     iganet::IgABaseNoRefData>,
+class stokes : public iganet::IgANet<Optimizer, GeometryMap, Variable>,
                public iganet::IgANetCustomizable<GeometryMap, Variable> {
 
 private:
   /// @brief Type of the base class
-  using Base = iganet::IgANet<Optimizer, GeometryMap, Variable,
-                              iganet::IgABaseNoRefData>;
+  using Base = iganet::IgANet<Optimizer, GeometryMap, Variable>;
 
   /// @brief Collocation points
   typename Base::variable_collPts_type collPts_;
@@ -131,20 +129,34 @@ public:
     std::cout << "d2v_dxx: " << *vel_hess_mom_y[4] << std::endl; // v_xx
     std::cout << "d2v_dyy: " << *vel_hess_mom_y[7] << std::endl; // v_yy
 
+    // body force
+    auto f0_ = Base::f_.template clone<0>();
+    //auto f = Base::f_.eval(collPts_.first);
+    //auto f0 = std::get<0>(f);
+
+    //var_knot_indices_ =
+     //     Base::f_.template find_knot_indices<iganet::functionspace::interior>(
+       //       collPts_.first);
+    //var_coeff_indices_ =
+      //    Base::f_.template find_coeff_indices<iganet::functionspace::interior>(
+        //      var_knot_indices_);
+
+    //auto f0 = f0_.eval(std::get<0>(collPts_.first),
+    //                    std::get<0>(var_knot_indices_),
+    //                    std::get<0>(var_coeff_indices_));
+    //std::cout << "f0: " << f0 << std::endl; // v_xx
+
+          
     // loss
-    auto res_mom_x = *p_grad_mom_x - (*vel_hess_mom_x[0]+*vel_hess_mom_x[3]);
+    //auto res_mom_x = *p_grad_mom_x - (*vel_hess_mom_x[0]+*vel_hess_mom_x[3]);
     auto res_mom_y = *p_grad_mom_y - (*vel_hess_mom_y[4]+*vel_hess_mom_y[7]);
     auto res_cont = *vel_grad[0] + * vel_grad[1];
 
-    std::cout << "res_mom_x: " << res_mom_x << std::endl; 
-    std::cout << "res_mom_y: " << res_mom_y << std::endl; 
-    std::cout << "res_cont: " << res_cont << std::endl; // u_xx
+    //std::cout << "res_mom_x: " << res_mom_x << std::endl; 
+    //std::cout << "res_mom_y: " << res_mom_y << std::endl; 
+    //std::cout << "res_cont: " << res_cont << std::endl; // u_xx
 
-
-
-    // body force
-
-  
+    //return torch::mse_loss(*p_grad_mom_x - (*vel_hess_mom_x[0]+*vel_hess_mom_x[3]), *f0);
     
     //    std::cout << vel << std::endl;
     exit(0);
