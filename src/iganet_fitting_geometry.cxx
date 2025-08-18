@@ -190,17 +190,17 @@ int main() {
                      .count()
               << " seconds\n";
 
-#ifdef IGANET_WITH_MATPLOT
-          // Evaluate position of collocation points in physical domain
-          //auto colPts = net.G().eval(net.collPts().first);
+// #ifdef IGANET_WITH_MATPLOT
+//           // Evaluate position of collocation points in physical domain
+//           //auto colPts = net.G().eval(net.collPts().first);
 
-          // Plot the solution
-          net.G()
-              .space()
-              .plot(net.u().space(),
-                    std::array<torch::Tensor, 2>{*colPts[0], *colPts[1]}, json)
-              ->show();
-#endif
+//           // Plot the solution
+//           net.G()
+//               .space()
+//               .plot(net.u().space(),
+//                     std::array<torch::Tensor, 2>{*colPts[0], *colPts[1]}, json)
+//               ->show();
+// #endif
 
 #ifdef IGANET_WITH_GISMO
           // Convert B-spline objects to G+Smo

@@ -106,8 +106,8 @@ public:
     Base::u_.from_tensor(outputs);
 
     auto vel = Base::u_.template clone<0, 1>();
-    auto p_y = Base::u_.template clone<0,2>();
-    auto p_x = Base::u_.template clone<2,0>();
+    auto p_y = Base::u_.template clone<0, 2>();
+    auto p_x = Base::u_.template clone<2, 0>();
 
     //std::cout << ", vel: " << vel << std::endl;
     //std::cout << ", p: " << p << std::endl;
@@ -123,16 +123,20 @@ public:
 
     // Compute second derivatives
     auto vel_hess_mom_x = vel.hess( std::get<0>(collPts_.first) ); //  [cpt_u ] 
-    std::cout << "d2u_dxx: " << *vel_hess_mom_x[0] << std::endl; // u_xx
-    std::cout << "d2u_dyy: " << *vel_hess_mom_x[3] << std::endl; // u_yy
+    //std::cout << "d2u_dxx: " << *vel_hess_mom_x[0] << std::endl; // u_xx
+    //std::cout << "d2u_dyy: " << *vel_hess_mom_x[3] << std::endl; // u_yy
     auto vel_hess_mom_y = vel.hess(std::get<1>(collPts_.first) ); //  [cpt_v]
-    std::cout << "d2v_dxx: " << *vel_hess_mom_y[4] << std::endl; // v_xx
-    std::cout << "d2v_dyy: " << *vel_hess_mom_y[7] << std::endl; // v_yy
+    //std::cout << "d2v_dxx: " << *vel_hess_mom_y[4] << std::endl; // v_xx
+    //std::cout << "d2v_dyy: " << *vel_hess_mom_y[7] << std::endl; // v_yy
 
     // body force
-    auto f0_ = Base::f_.template clone<0>();
-    //auto f = Base::f_.eval(collPts_.first);
-    //auto f0 = std::get<0>(f);
+    //auto f0_ = Base::f_.template clone<0>();
+    auto f = Base::f_.eval(collPts_.first);
+    auto f0 = std::get<0>(f);
+    auto f1 = std::get<1>(f);
+    auto f2 = std::get<2>(f);
+    //std::cout << "f0: " << *f0[0] << std::endl; 
+    //std::cout << "f1: " << *f1[0] << std::endl; 
 
     //var_knot_indices_ =
      //     Base::f_.template find_knot_indices<iganet::functionspace::interior>(
@@ -148,28 +152,14 @@ public:
 
           
     // loss
-    //auto res_mom_x = *p_grad_mom_x - (*vel_hess_mom_x[0]+*vel_hess_mom_x[3]);
+    auto res_mom_x = *p_grad_mom_x - (*vel_hess_mom_x[0]+*vel_hess_mom_x[3]);
     auto res_mom_y = *p_grad_mom_y - (*vel_hess_mom_y[4]+*vel_hess_mom_y[7]);
-    auto res_cont = *vel_grad[0] + * vel_grad[1];
+    auto res_cont = *vel_grad[0] + *vel_grad[1];
 
     //std::cout << "res_mom_x: " << res_mom_x << std::endl; 
     //std::cout << "res_mom_y: " << res_mom_y << std::endl; 
     //std::cout << "res_cont: " << res_cont << std::endl; // u_xx
-
-    //return torch::mse_loss(*p_grad_mom_x - (*vel_hess_mom_x[0]+*vel_hess_mom_x[3]), *f0);
     
-    //    std::cout << vel << std::endl;
-    exit(0);
-    
-    // Evaluate
-    //    auto u_ilapl = Base::u_.template clone<0, 1>().div(std::get<0>(
-    //        collPts_.first)); //, var_knot_indices_, var_coeff_indices_);
-    //    auto u_ilapl =
-    //        Base::u_.ilapl(Base::G_, collPts_.first, var_knot_indices_,
-    //                       var_coeff_indices_, G_knot_indices_,
-    //                       G_coeff_indices_);
-
-    exit(0);
 
     auto u_bdr = Base::u_.template eval<iganet::functionspace::boundary>(
         collPts_.second);
@@ -177,19 +167,17 @@ public:
     //auto bdr =
         //ref_.template eval<iganet::functionspace::boundary>(collPts_.second);
 
-    // Define the MSE loss function with zero target
-    auto mse_loss = [](const torch::Tensor &input) {
-      return torch::mean(torch::square(input));
-    };
+    return torch::mse_loss(res_mom_x, *f0[0]) +
+            torch::mse_loss(res_mom_y, *f1[0]) +
+            torch::mse_loss(res_cont, *f2[0]);
 
-    // Evaluate the loss function
-    return outputs; // mse_loss(*std::get<0>(u_ilapl)[0]);
   }
 };
 
 int main() {
   iganet::init();
-  //iganet::verbose(std::cout);
+  //iganet::init(iganet::Log(iganet::log::verbose));
+  iganet::Log.setLogLevel(iganet::log::verbose);
 
   nlohmann::json json;
   json["res0"] = 50;
@@ -218,8 +206,27 @@ int main() {
 
     iganet::Log(iganet::log::info)
               << ", #parameters: " << net.nparameters() << std::endl;
+
+ 
+  // prescribe boundary force by modifying sub-spaces of f
+  auto& f0 = net.f().template space<0>();
+  f0.transform([](const std::array<real_t, 2> xi) {
+    return std::array<real_t, 1>{
+      (12-24*xi[1])*xi[0]*xi[0]*xi[0]*xi[0] +(-24+48*xi[1])*xi[0]*xi[0]*xi[0]+(-48*xi[1]+72*xi[1]*xi[1]-48*xi[1]*xi[1]*xi[1]+12)*xi[0]*xi[0]+(-2+24*xi[1]-72*xi[1]*xi[1]+48*xi[1]*xi[1]*xi[1])*xi[0]+1-4*xi[1]+12*xi[1]*xi[1]-8*xi[1]*xi[1]*xi[1]
+    };
+  });
+
+  auto& f1 = net.f().template space<1>();
+  f1.transform([](const std::array<real_t, 2> xi) {
+    return std::array<real_t, 1>{
+      (8-48*xi[1]+48*xi[1]*xi[1])*xi[0]*xi[0]*xi[0]+(-12+72*xi[1]-72*xi[1]*xi[1])*xi[0]*xi[0]+(4-24*xi[1]+48*xi[1]*xi[1]-48*xi[1]*xi[1]*xi[1]+24*xi[1]*xi[1]*xi[1]*xi[1])*xi[0]-12*xi[1]*xi[1]+24*xi[1]*xi[1]*xi[1]-12*xi[1]*xi[1]*xi[1]*xi[1]
+    };
+  });
+
+  //f2 is 0.0 by default
+
   // Set maximum number of epochs
-  net.options().max_epoch(1);
+  net.options().max_epoch(1000);
 
   // Set tolerance for the loss functions
   net.options().min_loss(1e-8);
@@ -232,6 +239,8 @@ int main() {
 
   // Stop time measurement
   auto t2 = std::chrono::high_resolution_clock::now();
+  //iganet::Log(iganet::log::info) << "net.f0: " << net.f()[0] << std::endl; 
+
   iganet::Log(iganet::log::info)
       << "Training took "
       << std::chrono::duration_cast<std::chrono::duration<double>>(t2 - t1)
@@ -240,7 +249,15 @@ int main() {
 
 #ifdef IGANET_WITH_MATPLOT
   // Plot the solution
-  // net.G().plot(net.u(), net.collPts().first, json)->show();
+  // get solution components
+  auto& vx = net.u().template space<0>();
+  net.G().space().plot(vx, json)->show();
+
+  auto& vy = net.u().template space<1>();
+  net.G().space().plot(vy, json)->show();
+
+  auto& p = net.u().template space<2>();
+  net.G().space().plot(p, json)->show();
 
   // Plot the difference between the exact and predicted solutions
   // net.G().plot(net.ref().abs_diff(net.u()), net.collPts().first,
