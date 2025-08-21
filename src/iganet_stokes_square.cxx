@@ -34,7 +34,7 @@ private:
   typename Base::variable_collPts_type collPts_;
 
   /// @brief Reference solution
-  // Variable ref_;
+  Variable ref_;
 
   /// @brief Type of the customizable class
   using Customizable = iganet::IgANetCustomizable<GeometryMap, Variable>;
@@ -54,16 +54,17 @@ public:
          std::vector<std::vector<std::any>> &&activations, Args &&...args)
       : Base(std::forward<std::vector<int64_t>>(layers),
              std::forward<std::vector<std::vector<std::any>>>(activations),
-             std::forward<Args>(args)...) {}
+             std::forward<Args>(args)...),
+        ref_(iganet::utils::to_array(10_i64, 10_i64)) {}
 
   /// @brief Returns a constant reference to the collocation points
   auto const &collPts() const { return collPts_; }
 
   /// @brief Returns a constant reference to the reference solution
-  //auto const &ref() const { return ref_; }
+  auto const &ref() const { return ref_; }
 
   /// @brief Returns a non-constant reference to the reference solution
-  //auto &ref() { return ref_; }
+  auto &ref() { return ref_; }
 
   /// @brief Initializes the epoch
   ///
@@ -108,9 +109,6 @@ public:
     auto vel = Base::u_.template clone<0, 1>();
     auto p_y = Base::u_.template clone<0, 2>();
     auto p_x = Base::u_.template clone<2, 0>();
-
-    //std::cout << ", vel: " << vel << std::endl;
-    //std::cout << ", p: " << p << std::endl;
     
     // Compute first derivatives
     auto vel_grad= vel.grad( std::get<2>(collPts_.first) ); // du/dx [ cpt_p ] 
@@ -130,13 +128,10 @@ public:
     //std::cout << "d2v_dyy: " << *vel_hess_mom_y[7] << std::endl; // v_yy
 
     // body force
-    //auto f0_ = Base::f_.template clone<0>();
     auto f = Base::f_.eval(collPts_.first);
     auto f0 = std::get<0>(f);
     auto f1 = std::get<1>(f);
     auto f2 = std::get<2>(f);
-    //std::cout << "f0: " << *f0[0] << std::endl; 
-    //std::cout << "f1: " << *f1[0] << std::endl; 
 
     //var_knot_indices_ =
      //     Base::f_.template find_knot_indices<iganet::functionspace::interior>(
@@ -150,29 +145,41 @@ public:
     //                    std::get<0>(var_coeff_indices_));
     //std::cout << "f0: " << f0 << std::endl; // v_xx
 
-          
     // loss
     auto res_mom_x = *p_grad_mom_x - (*vel_hess_mom_x[0]+*vel_hess_mom_x[3]);
     auto res_mom_y = *p_grad_mom_y - (*vel_hess_mom_y[4]+*vel_hess_mom_y[7]);
     auto res_cont = *vel_grad[0] + *vel_grad[1];
 
-    //std::cout << "res_mom_x: " << res_mom_x << std::endl; 
-    //std::cout << "res_mom_y: " << res_mom_y << std::endl; 
-    //std::cout << "res_cont: " << res_cont << std::endl; // u_xx
-    
-
-    auto u_bdr = Base::u_.template eval<iganet::functionspace::boundary>(
+    auto sol_bdr = Base::u_.template eval<iganet::functionspace::boundary>(
         collPts_.second);
+    auto sol_bdrx = std::get<0>(sol_bdr);
+    auto sol_bdry = std::get<1>(sol_bdr);
+    auto sol_bdrp = std::get<2>(sol_bdr);
 
-    //auto bdr =
-        //ref_.template eval<iganet::functionspace::boundary>(collPts_.second);
+    //std::cout << "u_bdr: " << u_bdr << std::endl;
 
+    auto bdr =
+        ref_.template eval<iganet::functionspace::boundary>(collPts_.second);
+       
+    auto bdr_vx = std::get<0>(bdr);
+    auto bdr_vy = std::get<1>(bdr);
+    auto bdr_p = std::get<2>(bdr);
+    
+    //std::cout << "bdr: " << bdr << std::endl;
+          
     return torch::mse_loss(res_mom_x, *f0[0]) +
             torch::mse_loss(res_mom_y, *f1[0]) +
-            torch::mse_loss(res_cont, *f2[0]);
-
-  }
-};
+            torch::mse_loss(res_cont, *f2[0]) +
+            1e1*torch::mse_loss(*std::get<0>(sol_bdrx)[0], *std::get<0>(bdr_vx)[0]) +
+            1e1*torch::mse_loss(*std::get<1>(sol_bdrx)[0], *std::get<1>(bdr_vx)[0]) +
+            1e1*torch::mse_loss(*std::get<2>(sol_bdrx)[0], *std::get<2>(bdr_vx)[0]) +
+            1e1*torch::mse_loss(*std::get<3>(sol_bdrx)[0], *std::get<3>(bdr_vx)[0]) +
+            1e1*torch::mse_loss(*std::get<0>(sol_bdry)[0], *std::get<0>(bdr_vy)[0]) +
+            1e1*torch::mse_loss(*std::get<1>(sol_bdry)[0], *std::get<1>(bdr_vy)[0]) +
+            1e1*torch::mse_loss(*std::get<2>(sol_bdry)[0], *std::get<2>(bdr_vy)[0]) +
+            1e1*torch::mse_loss(*std::get<3>(sol_bdry)[0], *std::get<3>(bdr_vy)[0]);
+    }
+  };
 
 int main() {
   iganet::init();
@@ -194,10 +201,11 @@ int main() {
 
   stokes<optimizer_t, geometry_t, variable_t>
       net( // Number of neurons per layers
-          {20},
+          {50, 50, 50},
           // Activation functions
-          {{iganet::activation::sigmoid},
-          // {iganet::activation::sigmoid},
+          {{iganet::activation::tanh},
+          {iganet::activation::tanh},
+          {iganet::activation::tanh},
            {iganet::activation::none}},
           // Number of B-spline coefficients of the geometry, just [0,1] x [0,1]
           iganet::utils::to_array(2_i64, 2_i64),
@@ -225,11 +233,48 @@ int main() {
 
   //f2 is 0.0 by default
 
+  // impose boundary conditions
+  net.ref().template boundary<0>().template side<iganet::north>().transform(
+    [](const std::array<real_t, 1> xi) {
+        return std::array<real_t, 1>{0.0};
+      });
+  net.ref().template boundary<1>().template side<iganet::north>().transform(
+    [](const std::array<real_t, 1> xi) {
+        return std::array<real_t, 1>{0.0};
+      });
+
+  net.ref().template boundary<0>().template side<iganet::south>().transform(
+    [](const std::array<real_t, 1> xi) {
+        return std::array<real_t, 1>{0.0};
+      });
+  net.ref().template boundary<1>().template side<iganet::south>().transform(
+    [](const std::array<real_t, 1> xi) {
+        return std::array<real_t, 1>{0.0};
+      });
+  
+  net.ref().template boundary<0>().template side<iganet::east>().transform(
+    [](const std::array<real_t, 1> xi) {
+        return std::array<real_t, 1>{0.0};
+      });
+  net.ref().template boundary<1>().template side<iganet::east>().transform(
+    [](const std::array<real_t, 1> xi) {
+        return std::array<real_t, 1>{0.0};
+      });
+
+  net.ref().template boundary<0>().template side<iganet::west>().transform(
+    [](const std::array<real_t, 1> xi) {
+        return std::array<real_t, 1>{0.0};
+      });
+  net.ref().template boundary<1>().template side<iganet::west>().transform(
+    [](const std::array<real_t, 1> xi) {
+        return std::array<real_t, 1>{0.0};
+      });
+
   // Set maximum number of epochs
-  net.options().max_epoch(1000);
+  net.options().max_epoch(100);
 
   // Set tolerance for the loss functions
-  net.options().min_loss(1e-8);
+  net.options().min_loss(1e-10);
 
   // Start time measurement
   auto t1 = std::chrono::high_resolution_clock::now();
