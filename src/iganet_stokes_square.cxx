@@ -19,6 +19,7 @@
 #include <iganet.h>
 #include <iostream>
 
+
 using namespace iganet::literals;
 
 /// @brief Specialization of the abstract IgANet class for Stokes's equation
@@ -105,10 +106,17 @@ public:
     // function-space format, i.e. B-spline objects for the interior
     // and boundary parts that can be evaluated.
     Base::u_.from_tensor(outputs);
+    std::cout << "outputs: " << outputs << std::endl;
 
     auto vel = Base::u_.template clone<0, 1>();
     auto p_y = Base::u_.template clone<0, 2>();
     auto p_x = Base::u_.template clone<2, 0>();
+
+    // scale pressure
+    //auto p_y_scaled_coeffs = 0.125*p_y.template coeffs()[0]+0.125;
+    //p_y.from_tensor(p_y_scaled_coeffs);
+    //auto p_x_scaled_coeffs = 0.125*p_x.template coeffs()[0]+0.125;
+    //p_x.from_tensor(p_x_scaled_coeffs);
     
     // Compute first derivatives
     auto vel_grad= vel.grad( std::get<2>(collPts_.first) ); // du/dx [ cpt_p ] 
@@ -133,18 +141,6 @@ public:
     auto f1 = std::get<1>(f);
     auto f2 = std::get<2>(f);
 
-    //var_knot_indices_ =
-     //     Base::f_.template find_knot_indices<iganet::functionspace::interior>(
-       //       collPts_.first);
-    //var_coeff_indices_ =
-      //    Base::f_.template find_coeff_indices<iganet::functionspace::interior>(
-        //      var_knot_indices_);
-
-    //auto f0 = f0_.eval(std::get<0>(collPts_.first),
-    //                    std::get<0>(var_knot_indices_),
-    //                    std::get<0>(var_coeff_indices_));
-    //std::cout << "f0: " << f0 << std::endl; // v_xx
-
     // loss
     auto res_mom_x = *p_grad_mom_x - (*vel_hess_mom_x[0]+*vel_hess_mom_x[3]);
     auto res_mom_y = *p_grad_mom_y - (*vel_hess_mom_y[4]+*vel_hess_mom_y[7]);
@@ -155,8 +151,6 @@ public:
     auto sol_bdrx = std::get<0>(sol_bdr);
     auto sol_bdry = std::get<1>(sol_bdr);
     auto sol_bdrp = std::get<2>(sol_bdr);
-
-    //std::cout << "u_bdr: " << u_bdr << std::endl;
 
     auto bdr =
         ref_.template eval<iganet::functionspace::boundary>(collPts_.second);
@@ -169,7 +163,7 @@ public:
           
     return torch::mse_loss(res_mom_x, *f0[0]) +
             torch::mse_loss(res_mom_y, *f1[0]) +
-            torch::mse_loss(res_cont, *f2[0]) +
+            5e1*torch::mse_loss(res_cont, *f2[0]) +
             1e1*torch::mse_loss(*std::get<0>(sol_bdrx)[0], *std::get<0>(bdr_vx)[0]) +
             1e1*torch::mse_loss(*std::get<1>(sol_bdrx)[0], *std::get<1>(bdr_vx)[0]) +
             1e1*torch::mse_loss(*std::get<2>(sol_bdrx)[0], *std::get<2>(bdr_vx)[0]) +
@@ -270,11 +264,14 @@ int main() {
         return std::array<real_t, 1>{0.0};
       });
 
-  // Set maximum number of epochs
-  net.options().max_epoch(100);
+ // Set maximum number of epochs
+          net.options().max_epoch(
+              iganet::utils::getenv("IGANET_MAX_EPOCH", 1_i64));
 
-  // Set tolerance for the loss functions
-  net.options().min_loss(1e-10);
+          // Set tolerance for the loss functions
+          net.options().min_loss(
+              iganet::utils::getenv("IGANET_MIN_LOSS", 1e-12));
+
 
   // Start time measurement
   auto t1 = std::chrono::high_resolution_clock::now();
@@ -292,21 +289,61 @@ int main() {
              .count()
       << " seconds\n";
 
+// Compute analytical solution
+  auto& ref_vx = net.ref().template space<0>();
+  ref_vx.transform([](const std::array<real_t, 2> xi) {
+    return std::array<real_t, 1>{
+      xi[0]*xi[0]*(1.0-xi[0])*(1.0-xi[0])*(2.0*xi[1]-6.0*xi[1]*xi[1]+4.0*xi[1]*xi[1]*xi[1])
+    };
+  });
+
+  auto& ref_vy = net.ref().template space<1>();
+  ref_vy.transform([](const std::array<real_t, 2> xi) {
+    return std::array<real_t, 1>{
+      -xi[1]*xi[1]*(1.0-xi[1])*(1.0-xi[1])*(2.0*xi[0]-6.0*xi[0]*xi[0]+4.0*xi[0]*xi[0]*xi[0])
+    };
+  });
+
+  auto& ref_p = net.ref().template space<2>();
+  ref_p.transform([](const std::array<real_t, 2> xi) {
+    return std::array<real_t, 1>{
+      xi[0]*(1.0-xi[0])
+    };
+  });
+
 #ifdef IGANET_WITH_MATPLOT
   // Plot the solution
   // get solution components
   auto& vx = net.u().template space<0>();
-  net.G().space().plot(vx, json)->show();
+  //net.G().space().plot(vx, json)->show();
 
   auto& vy = net.u().template space<1>();
-  net.G().space().plot(vy, json)->show();
+  //net.G().space().plot(vy, json)->show();
 
   auto& p = net.u().template space<2>();
-  net.G().space().plot(p, json)->show();
+  //net.G().space().plot(p, json)->show();
 
+  auto min_ref_p = torch::min(ref_p.coeffs()[0]);
+  auto max_ref_p = torch::max(ref_p.coeffs()[0]);
+  auto range_p_ref = max_ref_p - min_ref_p;
+  //std::cout << "min ref_p: " << min_ref_p << std::endl;
+  //std::cout << "max ref_p: " << max_ref_p << std::endl;
+  //std::cout << "range ref_p: " << range_p_ref << std::endl;
+
+  auto max_pred_p = torch::max(p.coeffs()[0]);
+  //std::cout << "max pred_p: " << max_pred_p << std::endl;
+
+  // compute pressure error
+  auto err_p = abs((p.coeffs()[0] - max_pred_p) - (ref_p.coeffs()[0] - max_ref_p)/range_p_ref);
+  // cast error to function space
+  auto err_p_spl = p.clone();
+  err_p_spl.from_tensor(err_p);
+  
   // Plot the difference between the exact and predicted solutions
-  // net.G().plot(net.ref().abs_diff(net.u()), net.collPts().first,
-  // json)->show();
+  //net.G().space().plot(ref_vx.abs_diff(vx),  json)->show();
+  //net.G().space().plot(ref_vy.abs_diff(vy),  json)->show();
+  //net.G().space().plot(err_p_spl,  json)->show();
+
 #endif
 
   iganet::finalize();
