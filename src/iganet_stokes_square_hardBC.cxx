@@ -79,7 +79,7 @@ public:
     // not change the inputs nor the variable function space.
     if (epoch == 0) {
       Base::inputs(epoch);
-      collPts_ = Base::variable_collPts(iganet::collPts::greville);
+      collPts_ = Base::variable_collPts(iganet::collPts::greville_ref2);
 
       var_knot_indices_ =
           Base::u_.template find_knot_indices<iganet::functionspace::interior>(
@@ -164,18 +164,17 @@ public:
         }
     }
 
+    // scale pressure coeffs to [0,0.125]
+    int start = 2 * N * M;
+    outputs_view.index({torch::indexing::Slice(start, torch::indexing::None)})
+      .mul_(0.125).add_(0.125);
+
     Base::u_.from_tensor(outputs);
 
     auto vel = Base::u_.template clone<0, 1>();
     auto p_y = Base::u_.template clone<0, 2>();
     auto p_x = Base::u_.template clone<2, 0>();
 
-    // scale pressure
-    //auto p_y_scaled_coeffs = 0.125*p_y.template coeffs()[0]+0.125;
-    //p_y.from_tensor(p_y_scaled_coeffs);
-    //auto p_x_scaled_coeffs = 0.125*p_x.template coeffs()[0]+0.125;
-    //p_x.from_tensor(p_x_scaled_coeffs);
-    
     // Compute first derivatives
     auto vel_grad= vel.grad( std::get<2>(collPts_.first) ); // du/dx [ cpt_p ] 
     //std::cout << ", u_grad_x_mass: " << *vel_grad[0] << std::endl; //du/dx 
@@ -222,6 +221,7 @@ public:
     return torch::mse_loss(res_mom_x, *f0[0]) +
             torch::mse_loss(res_mom_y, *f1[0]) +
             5e1*torch::mse_loss(res_cont, *f2[0]);
+            //torch::mse_loss(res_cont, *f2[0]);
     }
   };
 
@@ -279,7 +279,7 @@ int main() {
 
  // Set maximum number of epochs
           net.options().max_epoch(
-              iganet::utils::getenv("IGANET_MAX_EPOCH", 500_i64));
+              iganet::utils::getenv("IGANET_MAX_EPOCH",500_i64));
 
           net.options().min_loss_rel_change(
             iganet::utils::getenv("IGANET_MIN_LOSS_REL_CHANGE", 0.0));
@@ -347,7 +347,9 @@ int main() {
   std::cout << "range ref_p: " << range_p_ref << std::endl;
 
   auto max_pred_p = torch::max(p.coeffs()[0]);
-  //std::cout << "max pred_p: " << max_pred_p << std::endl;
+  std::cout << "max pred_p: " << max_pred_p << std::endl;
+  auto min_pred_p = torch::min(p.coeffs()[0]);
+  std::cout << "min pred_p: " << min_pred_p << std::endl;
 
   // compute pressure error
   auto err_p = abs((p.coeffs()[0] - max_pred_p) - (ref_p.coeffs()[0] - max_ref_p)/range_p_ref);
@@ -358,8 +360,9 @@ int main() {
   // Plot the difference between the exact and predicted solutions
   net.G().space().plot(ref_vx.abs_diff(vx),  json)->show();
   net.G().space().plot(ref_vy.abs_diff(vy),  json)->show();
+  net.G().space().plot(ref_p.abs_diff(p),  json)->show();
+
   net.G().space().plot(err_p_spl,  json)->show();
-  net.G().space().plot(ref_p,  json)->show();
 
 #endif
 
