@@ -24,12 +24,12 @@ using namespace iganet::literals;
 
 /// @brief Specialization of the abstract IgANet class for Stokes's equation
 template <typename Optimizer, typename GeometryMap, typename Variable>
-class stokes : public iganet::IgANet<Optimizer, GeometryMap, Variable>,
-               public iganet::IgANetCustomizable<GeometryMap, Variable> {
+class stokes : public iganet::v1::IgANet<Optimizer, GeometryMap, Variable>,
+               public iganet::v1::IgANetCustomizable<GeometryMap, Variable> {
 
 private:
   /// @brief Type of the base class
-  using Base = iganet::IgANet<Optimizer, GeometryMap, Variable>;
+  using Base = iganet::v1::IgANet<Optimizer, GeometryMap, Variable>;
 
   /// @brief Collocation points
   typename Base::variable_collPts_type collPts_;
@@ -38,7 +38,7 @@ private:
   Variable ref_;
 
   /// @brief Type of the customizable class
-  using Customizable = iganet::IgANetCustomizable<GeometryMap, Variable>;
+  using Customizable = iganet::v1::IgANetCustomizable<GeometryMap, Variable>;
 
   /// @brief Knot indices of variables
   typename Customizable::variable_interior_knot_indices_type var_knot_indices_;

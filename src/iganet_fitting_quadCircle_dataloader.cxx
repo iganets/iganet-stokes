@@ -24,19 +24,19 @@
 // /// @brief Specialization of the abstract IgANet class for function fitting
 // template <typename Optimizer, typename GeometryMap, typename Variable>
 // class fitting
-//     : public iganet::IgANet<Optimizer, GeometryMap, Variable>,
-//       public iganet::IgANetCustomizable<Optimizer, GeometryMap, Variable> {
+//     : public iganet::v1::IgANet<Optimizer, GeometryMap, Variable>,
+//       public iganet::v1::IgANetCustomizable<Optimizer, GeometryMap, Variable> {
 
 // private:
 //   /// @brief Type of the base class
-//   using Base = iganet::IgANet<Optimizer, GeometryMap, Variable>;
+//   using Base = iganet::v1::IgANet<Optimizer, GeometryMap, Variable>;
 
 //   /// @brief Collocation points
 //   typename Base::variable_collPts_type collPts_;
 
 //   /// @brief Type of the customizable class
 //   using Customizable =
-//       iganet::IgANetCustomizable<Optimizer, GeometryMap, Variable>;
+//       iganet::v1::IgANetCustomizable<Optimizer, GeometryMap, Variable>;
 
 //   /// @brief Knot indices
 //   typename Customizable::variable_interior_knot_indices_type knot_indices_;
@@ -46,7 +46,7 @@
 
 // public:
 //   /// @brief Constructors from the base class
-//   using iganet::IgANet<Optimizer, GeometryMap, Variable>::IgANet;
+//   using iganet::v1::IgANet<Optimizer, GeometryMap, Variable>::IgANet;
 
 //   /// @brief Returns a constant reference to the collocation points
 //   auto const &collPts() const { return collPts_; }
