@@ -92,8 +92,8 @@ public:
       return false;
   }
   // define material parameters
-  float_t density{1e3};
-  float_t viscosity{1e-3};
+  float_t density{1.0};
+  float_t viscosity{1.0};
 
   /// @brief Computes the loss function
   ///
@@ -106,7 +106,7 @@ public:
     // function-space format, i.e. B-spline objects for the interior
     // and boundary parts that can be evaluated.
     Base::u_.from_tensor(outputs);
-    std::cout << "outputs: " << outputs << std::endl;
+    //std::cout << "outputs: " << outputs << std::endl;
 
     auto vel = Base::u_.template clone<0, 1>();
     auto p_y = Base::u_.template clone<0, 2>();
@@ -210,7 +210,7 @@ int main() {
               << ", #parameters: " << net.nparameters() << std::endl;
 
  
-  // prescribe boundary force by modifying sub-spaces of f
+  // prescribe body force by modifying sub-spaces of f
   auto& f0 = net.f().template space<0>();
   f0.transform([](const std::array<real_t, 2> xi) {
     return std::array<real_t, 1>{
@@ -266,7 +266,7 @@ int main() {
 
  // Set maximum number of epochs
           net.options().max_epoch(
-              iganet::utils::getenv("IGANET_MAX_EPOCH", 1_i64));
+              iganet::utils::getenv("IGANET_MAX_EPOCH", 500_i64));
 
           // Set tolerance for the loss functions
           net.options().min_loss(
