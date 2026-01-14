@@ -161,7 +161,7 @@ int main() {
   
    // Load XML file
   pugi::xml_document xml;
-  xml.load_file(IGANET_DATA_DIR "surfaces/2d_quadCircleImp/quadCircleImpR1I04_refined.xml");
+  xml.load_file(IGANET_DATA_DIR "surfaces/2d_quadCircleImp/quadCircleImpR1I04_resultR1E1Fixed.xml");
 
   //pugi::xml_document xml_new;
   //xml_new.load_file(IGANET_DATA_DIR "surfaces/2d_quadCircleImp/quadCircleImpR1I04_refined4x.xml");
@@ -171,7 +171,7 @@ int main() {
 
   poisson<optimizer_t, geometry_t, variable_t>
       net( // Number of neurons per layers
-          {700, 700, 700, 700},
+          {100, 100, 100, 100},
           // Activation functions
           {{iganet::activation::sigmoid},
            {iganet::activation::sigmoid},
@@ -179,8 +179,8 @@ int main() {
            {iganet::activation::sigmoid},
            {iganet::activation::none}},
           // Number of B-spline coefficients of the geometry
-          std::tuple(iganet::utils::to_array(18_i64, 33_i64)),
-          std::tuple(iganet::utils::to_array(18_i64, 33_i64)));
+          std::tuple(iganet::utils::to_array(4_i64, 33_i64)),
+          std::tuple(iganet::utils::to_array(4_i64, 33_i64)));
 
   // load geometry from file
   net.G().from_xml(xml);
