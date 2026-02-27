@@ -18,9 +18,12 @@
 
 #include <iganet.h>
 #include <iostream>
+#include <utils/tensorarray.hpp>
 
 
 using namespace iganet::literals;
+
+int nvarcoef = 10; // default
 
 /// @brief Specialization of the abstract IgANet class for Stokes's equation
 template <typename Optimizer, typename GeometryMap, typename Variable>
@@ -56,7 +59,7 @@ public:
       : Base(std::forward<std::vector<int64_t>>(layers),
              std::forward<std::vector<std::vector<std::any>>>(activations),
              std::forward<Args>(args)...),
-        ref_(iganet::utils::to_array(10_i64, 10_i64)) {}
+        ref_(iganet::utils::to_array(int64_t(nvarcoef), int64_t(nvarcoef))) {}
 
   /// @brief Returns a constant reference to the collocation points
   auto const &collPts() const { return collPts_; }
@@ -175,8 +178,16 @@ public:
     }
   };
 
-int main() {
+int main(int argc, char* argv[]) {
   iganet::init();
+
+  // Parse output directory from command line arguments
+  std::string output_dir = "";
+  if (argc > 1) {
+    output_dir = argv[1];
+    if (!output_dir.empty() && output_dir.back() != '/' && output_dir.back() != '\\') output_dir += "/";
+  }
+
   //iganet::init(iganet::Log(iganet::log::verbose));
   iganet::Log.setLogLevel(iganet::log::verbose);
 
@@ -193,18 +204,40 @@ int main() {
   //using variable_t = iganet::TH<iganet::NonUniformBSpline<real_t, 1, 1, 1>,2>;
   using variable_t = iganet::RT<iganet::UniformBSpline<real_t, 1, 2, 2>,2>;
 
+  int npl = 50; // default
+  int ngcoef = 2; // default
+  int me = 500; // default maximum number of epochs
+  for (int i = 1; i < argc - 1; ++i) {
+    if (std::string(argv[i]) == "-npl") {
+      npl = std::stoi(argv[i + 1]);
+      break;
+    }
+    if (std::string(argv[i]) == "-ngcoef") {
+      ngcoef = std::stoi(argv[i + 1]);
+      break;
+    }
+    if (std::string(argv[i]) == "-nvarcoef") {
+      nvarcoef = std::stoi(argv[i + 1]);
+      break;
+    }
+    if (std::string(argv[i]) == "-me") {
+      me = std::stoi(argv[i + 1]);
+      break;
+    }
+  }
+
   stokes<optimizer_t, geometry_t, variable_t>
-      net( // Number of neurons per layers
-          {50, 50, 50},
+      net(
+          std::vector<int64_t>{npl, npl, npl},
           // Activation functions
           {{iganet::activation::tanh},
-          {iganet::activation::tanh},
-          {iganet::activation::tanh},
+           {iganet::activation::tanh},
+           {iganet::activation::tanh},
            {iganet::activation::none}},
           // Number of B-spline coefficients of the geometry, just [0,1] x [0,1]
-          iganet::utils::to_array(2_i64, 2_i64),
+          iganet::utils::to_array(int64_t(ngcoef), int64_t(ngcoef)),
           // Number of B-spline coefficients of the variable
-          iganet::utils::to_array(10_i64, 10_i64));
+          iganet::utils::to_array(int64_t(nvarcoef), int64_t(nvarcoef)));
 
     iganet::Log(iganet::log::info)
               << ", #parameters: " << net.nparameters() << std::endl;
@@ -266,7 +299,7 @@ int main() {
 
  // Set maximum number of epochs
           net.options().max_epoch(
-              iganet::utils::getenv("IGANET_MAX_EPOCH", 500_i64));
+              iganet::utils::getenv("IGANET_MAX_EPOCH", int64_t(me)));
 
           // Set tolerance for the loss functions
           net.options().min_loss(
@@ -315,13 +348,73 @@ int main() {
   // Plot the solution
   // get solution components
   auto& vx = net.u().template space<0>();
-  //net.G().space().plot(vx, json)->show();
+  net.G().space().plot(vx, json)->show();
+  // Export sampled vx data on a regular grid for Python/matplotlib (using TensorArray input)
+    {
+      std::ofstream vx_grid_file(output_dir + "vx_grid_for_python.csv");
+      vx_grid_file << "xi,eta,vx\n";
+      int res0 = 100, res1 = 100;
+      if (json.contains("res0")) res0 = json["res0"].get<int>();
+      if (json.contains("res1")) res1 = json["res1"].get<int>();
+      for (int i = 0; i <= res0; ++i) {
+        double xi = double(i) / res0;
+        for (int j = 0; j <= res1; ++j) {
+          double eta = double(j) / res1;
+          iganet::utils::TensorArray<2> xi_tensor = {torch::tensor({xi}), torch::tensor({eta})};
+          auto val = vx.eval(xi_tensor); 
+          double vx_val = val[0]->item<double>();
+          vx_grid_file << xi << "," << eta << "," << vx_val << "\n";
+        }
+      }
+      vx_grid_file.close();
+    }
 
   auto& vy = net.u().template space<1>();
-  //net.G().space().plot(vy, json)->show();
+  net.G().space().plot(vy, json)->show();
 
+  // Export sampled vy data on a regular grid for Python/matplotlib (using TensorArray input)
+    {
+      std::ofstream vy_grid_file(output_dir + "vy_grid_for_python.csv");
+      vy_grid_file << "xi,eta,vy\n";
+      int res0 = 100, res1 = 100;
+      if (json.contains("res0")) res0 = json["res0"].get<int>();
+      if (json.contains("res1")) res1 = json["res1"].get<int>();
+      for (int i = 0; i <= res0; ++i) {
+        double xi = double(i) / res0;
+        for (int j = 0; j <= res1; ++j) {
+          double eta = double(j) / res1;
+          iganet::utils::TensorArray<2> xi_tensor = {torch::tensor({xi}), torch::tensor({eta})};
+          auto val = vy.eval(xi_tensor); 
+          double vy_val = val[0]->item<double>();
+          vy_grid_file << xi << "," << eta << "," << vy_val << "\n";
+        }
+      }
+      vy_grid_file.close();
+    }
+  
   auto& p = net.u().template space<2>();
-  //net.G().space().plot(p, json)->show();
+  net.G().space().plot(p, json)->show();
+
+  // Export sampled vy data on a regular grid for Python/matplotlib (using TensorArray input)
+    {
+      std::ofstream p_grid_file(output_dir + "p_grid_for_python.csv");
+      p_grid_file << "xi,eta,vy\n";
+      int res0 = 100, res1 = 100;
+      if (json.contains("res0")) res0 = json["res0"].get<int>();
+      if (json.contains("res1")) res1 = json["res1"].get<int>();
+      for (int i = 0; i <= res0; ++i) {
+        double xi = double(i) / res0;
+        for (int j = 0; j <= res1; ++j) {
+          double eta = double(j) / res1;
+          iganet::utils::TensorArray<2> xi_tensor = {torch::tensor({xi}), torch::tensor({eta})};
+          auto val = p.eval(xi_tensor); 
+          double p_val = val[0]->item<double>();
+          p_grid_file << xi << "," << eta << "," << p_val << "\n";
+        }
+      }
+      p_grid_file.close();
+    }
+
 
   auto min_ref_p = torch::min(ref_p.coeffs()[0]);
   auto max_ref_p = torch::max(ref_p.coeffs()[0]);
@@ -340,9 +433,49 @@ int main() {
   err_p_spl.from_tensor(err_p);
   
   // Plot the difference between the exact and predicted solutions
-  //net.G().space().plot(ref_vx.abs_diff(vx),  json)->show();
-  //net.G().space().plot(ref_vy.abs_diff(vy),  json)->show();
-  //net.G().space().plot(err_p_spl,  json)->show();
+  net.G().space().plot(ref_vx.abs_diff(vx),  json)->show();
+  net.G().space().plot(ref_vy.abs_diff(vy),  json)->show();
+  net.G().space().plot(ref_p.abs_diff(p),  json)->show();
+
+  net.G().space().plot(err_p_spl,  json)->show();
+
+  // Export error fields on a regular grid for Python/matplotlib
+  {
+    std::ofstream err_vx_grid_file(output_dir + "err_vx_grid_for_python.csv");
+    err_vx_grid_file << "xi,eta,err_vx\n";
+    std::ofstream err_vy_grid_file(output_dir + "err_vy_grid_for_python.csv");
+    err_vy_grid_file << "xi,eta,err_vy\n";
+    std::ofstream err_p_grid_file(output_dir + "err_p_grid_for_python.csv");
+    err_p_grid_file << "xi,eta,err_p\n";
+    std::ofstream err_p_spl_grid_file("err_p_spl_grid_for_python.csv");
+    err_p_spl_grid_file << "xi,eta,err_p_spl\n";
+    int res0 = 100, res1 = 100;
+    if (json.contains("res0")) res0 = json["res0"].get<int>();
+    if (json.contains("res1")) res1 = json["res1"].get<int>();
+    for (int i = 0; i <= res0; ++i) {
+      double xi = double(i) / res0;
+      for (int j = 0; j <= res1; ++j) {
+        double eta = double(j) / res1;
+        iganet::utils::TensorArray<2> xi_tensor = {torch::tensor({xi}), torch::tensor({eta})};
+        // Error vx
+        auto err_vx_val = ref_vx.abs_diff(vx).eval(xi_tensor);
+        err_vx_grid_file << xi << "," << eta << "," << err_vx_val[0]->item<double>() << "\n";
+        // Error vy
+        auto err_vy_val = ref_vy.abs_diff(vy).eval(xi_tensor);
+        err_vy_grid_file << xi << "," << eta << "," << err_vy_val[0]->item<double>() << "\n";
+        // Error p
+        auto err_p_val = ref_p.abs_diff(p).eval(xi_tensor);
+        err_p_grid_file << xi << "," << eta << "," << err_p_val[0]->item<double>() << "\n";
+        // Error p_spl
+        auto err_p_spl_val = err_p_spl.eval(xi_tensor);
+        err_p_spl_grid_file << xi << "," << eta << "," << err_p_spl_val[0]->item<double>() << "\n";
+      }
+    }
+    err_vx_grid_file.close();
+    err_vy_grid_file.close();
+    err_p_grid_file.close();
+    err_p_spl_grid_file.close();
+  }
 
 #endif
 
