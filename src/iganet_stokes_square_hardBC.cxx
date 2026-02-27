@@ -225,7 +225,21 @@ public:
     }
   };
 
-int main() {
+int main(int argc, char* argv[]) {
+    // Print help if requested
+    for (int i = 1; i < argc; ++i) {
+      if (std::string(argv[i]) == "--help" || std::string(argv[i]) == "-h") {
+        std::cout << "Usage: " << argv[0] << " [output_dir] [options]\n";
+        std::cout << "Options:\n";
+        std::cout << "  -npl <int>       Number of neurons per layer (default: 50)\n";
+        std::cout << "  -ngcoef <int>    Number of B-spline coefficients for geometry (default: 2)\n";
+        std::cout << "  -nvarcoef <int>  Number of B-spline coefficients for variables (default: 10)\n";
+        std::cout << "  -nhl <int>       Number of hidden layers (default: 3)\n";
+        std::cout << "  -me <int>        Maximum number of epochs (default: 500)\n";
+        std::cout << "  --help, -h       Show this help message\n";
+        exit(0);
+      }
+    }
   iganet::init();
   //iganet::init(iganet::Log(iganet::log::verbose));
   iganet::Log.setLogLevel(iganet::log::verbose);
@@ -248,6 +262,8 @@ int main() {
   int npl = 50; // neurons per layer
   int ngcoef = 2; // geometry B-spline coefficients
   int nvarcoef = 10; // variable B-spline coefficients
+  int nhl = 3; // number of hidden layers
+  int me = 500; // maximum number of epochs
   for (int i = 1; i < argc; ++i) {
     std::string arg = argv[i];
     if (arg == "-npl" && i + 1 < argc) {
@@ -259,6 +275,12 @@ int main() {
     } else if (arg == "-nvarcoef" && i + 1 < argc) {
       nvarcoef = std::stoi(argv[i + 1]);
       ++i;
+    } else if (arg == "-nhl" && i + 1 < argc) {
+      nhl = std::stoi(argv[i + 1]);
+      ++i;
+    } else if (arg == "-me" && i + 1 < argc) {
+      me = std::stoi(argv[i + 1]);
+      ++i;
     } else if (output_dir.empty() && arg[0] != '-') {
       output_dir = arg;
       if (!output_dir.empty() && output_dir.back() != '/' && output_dir.back() != '\\') output_dir += "/";
@@ -266,16 +288,23 @@ int main() {
   }
   N = nvarcoef;
 
-  stokes<optimizer_t, geometry_t, variable_t>
+  // Set up layers and activations vectors
+  std::vector<int64_t> layers;
+  for (int i = 0; i < nhl; ++i) {
+    layers.push_back(npl);
+  }
+  std::vector<std::vector<std::any>> activations;
+  for (int i = 0; i < nhl; ++i) {
+    activations.push_back({iganet::activation::tanh});
+  }
+    activations.push_back({iganet::activation::none});
+
+    stokes<optimizer_t, geometry_t, variable_t>
       net(
-          std::vector<int64_t>{npl, npl, npl},
-          // Activation functions
-          {{iganet::activation::tanh},
-           {iganet::activation::tanh},
-           {iganet::activation::tanh},
-           {iganet::activation::none}},
-          iganet::utils::to_array(int64_t(ngcoef), int64_t(ngcoef)),
-          iganet::utils::to_array(int64_t(nvarcoef), int64_t(nvarcoef)));
+        std::move(layers),
+        std::move(activations),
+        iganet::utils::to_array(int64_t(ngcoef), int64_t(ngcoef)),
+        iganet::utils::to_array(int64_t(nvarcoef), int64_t(nvarcoef)));
 
     iganet::Log(iganet::log::info)
               << ", #parameters: " << net.nparameters() << std::endl;
@@ -299,8 +328,8 @@ int main() {
   //f2 is 0.0 by default
 
  // Set maximum number of epochs
-          net.options().max_epoch(
-              iganet::utils::getenv("IGANET_MAX_EPOCH",500_i64));
+            net.options().max_epoch(
+              iganet::utils::getenv("IGANET_MAX_EPOCH", int64_t(me)));
 
           net.options().min_loss_rel_change(
             iganet::utils::getenv("IGANET_MIN_LOSS_REL_CHANGE", 0.0));
@@ -416,9 +445,6 @@ int main() {
   err_p_spl.from_tensor(err_p);
   
   // Export error fields on a regular grid for Python/matplotlib
-  auto& ref_vx = net.ref().template space<0>();
-  auto& ref_vy = net.ref().template space<1>();
-  auto& ref_p = net.ref().template space<2>();
   {
     std::ofstream err_vx_grid_file("err_vx_grid_for_python.csv");
     err_vx_grid_file << "xi,eta,err_vx\n";

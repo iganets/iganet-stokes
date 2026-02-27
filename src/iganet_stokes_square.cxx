@@ -179,6 +179,20 @@ public:
   };
 
 int main(int argc, char* argv[]) {
+    // Print help if requested
+    for (int i = 1; i < argc; ++i) {
+      if (std::string(argv[i]) == "--help" || std::string(argv[i]) == "-h") {
+        std::cout << "Usage: " << argv[0] << " [output_dir] [options]\n";
+        std::cout << "Options:\n";
+        std::cout << "  -npl <int>       Number of neurons per layer (default: 50)\n";
+        std::cout << "  -ngcoef <int>    Number of B-spline coefficients for geometry (default: 2)\n";
+        std::cout << "  -nvarcoef <int>  Number of B-spline coefficients for variables (default: 10)\n";
+        std::cout << "  -nhl <int>       Number of hidden layers (default: 3)\n";
+        std::cout << "  -me <int>        Maximum number of epochs (default: 500)\n";
+        std::cout << "  --help, -h       Show this help message\n";
+        exit(0);
+      }
+    }
   iganet::init();
 
   // Parse output directory from command line arguments
@@ -207,6 +221,7 @@ int main(int argc, char* argv[]) {
   int npl = 50; // default
   int ngcoef = 2; // default
   int me = 500; // default maximum number of epochs
+  int nhl = 3; // default number of hidden layers
   for (int i = 1; i < argc - 1; ++i) {
     if (std::string(argv[i]) == "-npl") {
       npl = std::stoi(argv[i + 1]);
@@ -224,19 +239,28 @@ int main(int argc, char* argv[]) {
       me = std::stoi(argv[i + 1]);
       break;
     }
+    if (std::string(argv[i]) == "-nhl") {
+      nhl = std::stoi(argv[i + 1]);
+      break;
+    }
   }
+
+  // Set up layers and activations vectors
+  std::vector<int64_t> layers;
+  for (int i = 0; i < nhl; ++i) {
+    layers.push_back(npl);
+  }
+  std::vector<std::vector<std::any>> activations;
+  for (int i = 0; i < nhl; ++i) {
+    activations.push_back({iganet::activation::tanh});
+  }
+  activations.push_back({iganet::activation::none});
 
   stokes<optimizer_t, geometry_t, variable_t>
       net(
-          std::vector<int64_t>{npl, npl, npl},
-          // Activation functions
-          {{iganet::activation::tanh},
-           {iganet::activation::tanh},
-           {iganet::activation::tanh},
-           {iganet::activation::none}},
-          // Number of B-spline coefficients of the geometry, just [0,1] x [0,1]
+          std::move(layers),
+          std::move(activations),
           iganet::utils::to_array(int64_t(ngcoef), int64_t(ngcoef)),
-          // Number of B-spline coefficients of the variable
           iganet::utils::to_array(int64_t(nvarcoef), int64_t(nvarcoef)));
 
     iganet::Log(iganet::log::info)
