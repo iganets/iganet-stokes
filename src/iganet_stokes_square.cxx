@@ -1,3 +1,4 @@
+#include <filesystem>
 /**
    @file examples/iganet_stokes.cxx
 
@@ -166,7 +167,7 @@ public:
           
     return torch::mse_loss(res_mom_x, *f0[0]) +
             torch::mse_loss(res_mom_y, *f1[0]) +
-            5e1*torch::mse_loss(res_cont, *f2[0]) +
+            1e1*torch::mse_loss(res_cont, *f2[0]) +
             1e1*torch::mse_loss(*std::get<0>(sol_bdrx)[0], *std::get<0>(bdr_vx)[0]) +
             1e1*torch::mse_loss(*std::get<1>(sol_bdrx)[0], *std::get<1>(bdr_vx)[0]) +
             1e1*torch::mse_loss(*std::get<2>(sol_bdrx)[0], *std::get<2>(bdr_vx)[0]) +
@@ -178,29 +179,28 @@ public:
     }
   };
 
+
 int main(int argc, char* argv[]) {
     // Print help if requested
     for (int i = 1; i < argc; ++i) {
       if (std::string(argv[i]) == "--help" || std::string(argv[i]) == "-h") {
-        std::cout << "Usage: " << argv[0] << " [output_dir] [options]\n";
+        std::cout << "Usage: " << argv[0] << " [options]\n";
         std::cout << "Options:\n";
-        std::cout << "  -npl <int>       Number of neurons per layer (default: 50)\n";
-        std::cout << "  -ngcoef <int>    Number of B-spline coefficients for geometry (default: 2)\n";
-        std::cout << "  -nvarcoef <int>  Number of B-spline coefficients for variables (default: 10)\n";
-        std::cout << "  -nhl <int>       Number of hidden layers (default: 3)\n";
-        std::cout << "  -me <int>        Maximum number of epochs (default: 500)\n";
-        std::cout << "  --help, -h       Show this help message\n";
+        std::cout << "  -output_dir <path> Output directory for CSV files\n";
+        std::cout << "  -npl <int>         Number of neurons per layer (default: 50)\n";
+        std::cout << "  -ngcoef <int>      Number of B-spline coefficients for geometry (default: 2)\n";
+        std::cout << "  -nvarcoef <int>    Number of B-spline coefficients for variables (default: 10)\n";
+        std::cout << "  -nhl <int>         Number of hidden layers (default: 3)\n";
+        std::cout << "  -me <int>          Maximum number of epochs (default: 500)\n";
+        std::cout << "  --help, -h         Show this help message\n";
         exit(0);
       }
     }
   iganet::init();
 
-  // Parse output directory from command line arguments
+  // Parse output directory and other parameters from command line arguments
   std::string output_dir = "";
-  if (argc > 1) {
-    output_dir = argv[1];
-    if (!output_dir.empty() && output_dir.back() != '/' && output_dir.back() != '\\') output_dir += "/";
-  }
+  namespace fs = std::filesystem;
 
   //iganet::init(iganet::Log(iganet::log::verbose));
   iganet::Log.setLogLevel(iganet::log::verbose);
@@ -211,6 +211,7 @@ int main(int argc, char* argv[]) {
   json["cnet"] = true;
 
   using namespace iganet::literals;
+  //using optimizer_t = torch::optim::Adam;
   using optimizer_t = torch::optim::LBFGS;
   using real_t = double;
 
@@ -222,27 +223,43 @@ int main(int argc, char* argv[]) {
   int ngcoef = 2; // default
   int me = 500; // default maximum number of epochs
   int nhl = 3; // default number of hidden layers
-  for (int i = 1; i < argc - 1; ++i) {
-    if (std::string(argv[i]) == "-npl") {
+  for (int i = 1; i < argc; ++i) {
+    std::string arg = argv[i];
+    if (arg == "-output_dir" && i + 1 < argc) {
+      output_dir = argv[i + 1];
+      if (!output_dir.empty() && output_dir.back() != '/' && output_dir.back() != '\\') output_dir += "/";
+      // Create output_dir if it does not exist
+      fs::path outdir_path(output_dir);
+      if (!output_dir.empty() && !fs::exists(outdir_path)) {
+        fs::create_directories(outdir_path);
+      }
+      ++i;
+    } else if (arg == "-npl" && i + 1 < argc) {
       npl = std::stoi(argv[i + 1]);
-      break;
-    }
-    if (std::string(argv[i]) == "-ngcoef") {
+      ++i;
+    } else if (arg == "-ngcoef" && i + 1 < argc) {
       ngcoef = std::stoi(argv[i + 1]);
-      break;
-    }
-    if (std::string(argv[i]) == "-nvarcoef") {
+      ++i;
+    } else if (arg == "-nvarcoef" && i + 1 < argc) {
       nvarcoef = std::stoi(argv[i + 1]);
-      break;
-    }
-    if (std::string(argv[i]) == "-me") {
+      ++i;
+    } else if (arg == "-me" && i + 1 < argc) {
       me = std::stoi(argv[i + 1]);
-      break;
-    }
-    if (std::string(argv[i]) == "-nhl") {
+      ++i;
+    } else if (arg == "-nhl" && i + 1 < argc) {
       nhl = std::stoi(argv[i + 1]);
-      break;
+      ++i;
     }
+  }
+
+  // Define savedir as output_dir + formatted parameters
+  std::stringstream savedir_ss;
+  savedir_ss << output_dir << "g" << ngcoef << "v" << nvarcoef << "nhl" << nhl << "npl" << npl;
+  std::string savedir = savedir_ss.str();
+  // Create savedir if it does not exist
+  fs::path savedir_path(savedir);
+  if (!savedir.empty() && !fs::exists(savedir_path)) {
+      fs::create_directories(savedir_path);
   }
 
   // Set up layers and activations vectors
@@ -265,8 +282,17 @@ int main(int argc, char* argv[]) {
 
     iganet::Log(iganet::log::info)
               << ", #parameters: " << net.nparameters() << std::endl;
+    iganet::Log(iganet::log::info)
+              << ", #ngcoef: " << ngcoef << std::endl;
+    iganet::Log(iganet::log::info)
+              << ", #nvarcoef: " << ngcoef << std::endl;
+    iganet::Log(iganet::log::info)
+              << ", #nhl: " << nhl << std::endl;
+    iganet::Log(iganet::log::info)
+              << ", #npl: " << npl << std::endl;
+    iganet::Log(iganet::log::info)
+              << ", #max_epoch: " << net.options().max_epoch() << std::endl;
 
- 
   // prescribe body force by modifying sub-spaces of f
   auto& f0 = net.f().template space<0>();
   f0.transform([](const std::array<real_t, 2> xi) {
@@ -324,10 +350,13 @@ int main(int argc, char* argv[]) {
  // Set maximum number of epochs
           net.options().max_epoch(
               iganet::utils::getenv("IGANET_MAX_EPOCH", int64_t(me)));
-
+          net.options().min_loss_rel_change(
+            iganet::utils::getenv("IGANET_MIN_LOSS_REL_CHANGE", 1e-8));
+          net.options().min_loss_change(
+            iganet::utils::getenv("IGANET_MIN_LOSS_CHANGE", 0.0));
           // Set tolerance for the loss functions
           net.options().min_loss(
-              iganet::utils::getenv("IGANET_MIN_LOSS", 1e-12));
+              iganet::utils::getenv("IGANET_MIN_LOSS", 1e-14));
 
 
   // Start time measurement
@@ -372,10 +401,10 @@ int main(int argc, char* argv[]) {
   // Plot the solution
   // get solution components
   auto& vx = net.u().template space<0>();
-  net.G().space().plot(vx, json)->show();
+  //net.G().space().plot(vx, json)->show();
   // Export sampled vx data on a regular grid for Python/matplotlib (using TensorArray input)
     {
-      std::ofstream vx_grid_file(output_dir + "vx_grid_for_python.csv");
+      std::ofstream vx_grid_file(savedir + "/vx_grid_for_python.csv");
       vx_grid_file << "xi,eta,vx\n";
       int res0 = 100, res1 = 100;
       if (json.contains("res0")) res0 = json["res0"].get<int>();
@@ -394,11 +423,11 @@ int main(int argc, char* argv[]) {
     }
 
   auto& vy = net.u().template space<1>();
-  net.G().space().plot(vy, json)->show();
+  //net.G().space().plot(vy, json)->show();
 
   // Export sampled vy data on a regular grid for Python/matplotlib (using TensorArray input)
     {
-      std::ofstream vy_grid_file(output_dir + "vy_grid_for_python.csv");
+      std::ofstream vy_grid_file(savedir + "/vy_grid_for_python.csv");
       vy_grid_file << "xi,eta,vy\n";
       int res0 = 100, res1 = 100;
       if (json.contains("res0")) res0 = json["res0"].get<int>();
@@ -417,11 +446,11 @@ int main(int argc, char* argv[]) {
     }
   
   auto& p = net.u().template space<2>();
-  net.G().space().plot(p, json)->show();
+  //net.G().space().plot(p, json)->show();
 
   // Export sampled vy data on a regular grid for Python/matplotlib (using TensorArray input)
     {
-      std::ofstream p_grid_file(output_dir + "p_grid_for_python.csv");
+      std::ofstream p_grid_file(savedir + "/p_grid_for_python.csv");
       p_grid_file << "xi,eta,vy\n";
       int res0 = 100, res1 = 100;
       if (json.contains("res0")) res0 = json["res0"].get<int>();
@@ -457,21 +486,21 @@ int main(int argc, char* argv[]) {
   err_p_spl.from_tensor(err_p);
   
   // Plot the difference between the exact and predicted solutions
-  net.G().space().plot(ref_vx.abs_diff(vx),  json)->show();
-  net.G().space().plot(ref_vy.abs_diff(vy),  json)->show();
-  net.G().space().plot(ref_p.abs_diff(p),  json)->show();
+   net.G().space().plot(ref_vx.abs_diff(vx),  json)->show();
+   net.G().space().plot(ref_vy.abs_diff(vy),  json)->show();
+  // net.G().space().plot(ref_p.abs_diff(p),  json)->show();
 
-  net.G().space().plot(err_p_spl,  json)->show();
+  // net.G().space().plot(err_p_spl,  json)->show();
 
   // Export error fields on a regular grid for Python/matplotlib
   {
-    std::ofstream err_vx_grid_file(output_dir + "err_vx_grid_for_python.csv");
+    std::ofstream err_vx_grid_file(savedir + "/err_vx_grid_for_python.csv");
     err_vx_grid_file << "xi,eta,err_vx\n";
-    std::ofstream err_vy_grid_file(output_dir + "err_vy_grid_for_python.csv");
+    std::ofstream err_vy_grid_file(savedir + "/err_vy_grid_for_python.csv");
     err_vy_grid_file << "xi,eta,err_vy\n";
-    std::ofstream err_p_grid_file(output_dir + "err_p_grid_for_python.csv");
+    std::ofstream err_p_grid_file(savedir + "/err_p_grid_for_python.csv");
     err_p_grid_file << "xi,eta,err_p\n";
-    std::ofstream err_p_spl_grid_file("err_p_spl_grid_for_python.csv");
+    std::ofstream err_p_spl_grid_file("/err_p_spl_grid_for_python.csv");
     err_p_spl_grid_file << "xi,eta,err_p_spl\n";
     int res0 = 100, res1 = 100;
     if (json.contains("res0")) res0 = json["res0"].get<int>();
@@ -503,6 +532,47 @@ int main(int argc, char* argv[]) {
 
 #endif
 
-  iganet::finalize();
-  return 0;
+// Export all values from first (TensorArray<2>) and second (tuple<torch::Tensor, torch::Tensor>) to CSV
+{
+  std::ofstream file(savedir + "/collPts_vx.csv");
+  const auto& first = std::get<0>(net.collPts().first); // TensorArray<2>
+  // Get sizes
+  // Export as coordinate pairs: xi, eta
+  // Try to export first[0] and first[1] as x and y (or xi, eta)
+  auto n = first[0].size(0);
+  file << "xi,eta\n";
+  for (int64_t i = 0; i < n; ++i) {
+    file << first[0][i].item<double>() << "," << first[1][i].item<double>() << "\n";
+  }
+  file.close();
 }
+{
+  std::ofstream file(savedir + "/collPts_vy.csv");
+  const auto& first = std::get<1>(net.collPts().first); // TensorArray<2>
+  // Get sizes
+  // Export as coordinate pairs: xi, eta
+  // Try to export first[0] and first[1] as x and y (or xi, eta)
+  auto n = first[0].size(0);
+  file << "xi,eta\n";
+  for (int64_t i = 0; i < n; ++i) {
+    file << first[0][i].item<double>() << "," << first[1][i].item<double>() << "\n";
+  }
+  file.close();
+}
+{
+  std::ofstream file(savedir + "/collPts_p.csv");
+  const auto& first = std::get<2>(net.collPts().first); // TensorArray<2>
+  // Get sizes
+  // Export as coordinate pairs: xi, eta
+  // Try to export first[0] and first[1] as x and y (or xi, eta)
+  auto n = first[0].size(0);
+  file << "xi,eta\n";
+  for (int64_t i = 0; i < n; ++i) {
+    file << first[0][i].item<double>() << "," << first[1][i].item<double>() << "\n";
+  }
+  file.close();
+}
+return 0;
+}
+
+
