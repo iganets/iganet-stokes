@@ -17,9 +17,9 @@
    file, You can obtain one at http://mozilla.org/MPL/2.0/.
 */
 
-#include <iganet.h>
+#include <iganet/iganet.h>
 #include <iostream>
-#include <utils/tensorarray.hpp>
+#include <iganet/utils/tensorarray.hpp>
 
 
 using namespace iganet::literals;
